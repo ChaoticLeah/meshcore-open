@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -39,6 +40,9 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
   final FocusNode _textFieldFocusNode = FocusNode();
   ChannelMessage? _replyingToMessage;
   final Map<String, GlobalKey> _messageKeys = {};
+  Offset? _swipeStartPosition;
+  String? _swipeTrackingMessageId;
+  double _swipeOffset = 0;
   bool _isLoadingOlder = false;
 
   MeshCoreConnector? _connector;
@@ -93,6 +97,25 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     setState(() {
       _replyingToMessage = null;
     });
+  }
+
+  double _getSwipeOffset(String messageId) {
+    return _swipeTrackingMessageId == messageId ? _swipeOffset : 0;
+  }
+
+  double _applySwipeResistance(double rawOffset, double maxOffset) {
+    final abs = rawOffset.abs();
+    if (abs <= 0) return 0;
+    final norm = (abs / maxOffset).clamp(0.0, 1.0);
+    const deadZone = 0.18;
+    if (norm <= deadZone) {
+      return rawOffset.sign * maxOffset * (norm * 0.08);
+    }
+    final t = ((norm - deadZone) / (1 - deadZone)).clamp(0.0, 1.0);
+    final curved = t < 0.5
+        ? 16 * math.pow(t, 5)
+        : 1 - math.pow(-2 * t + 2, 5) / 2;
+    return rawOffset.sign * maxOffset * curved;
   }
 
   Future<void> _scrollToMessage(String messageId) async {
@@ -271,193 +294,299 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
               ? message.pathVariants.first
               : Uint8List(0));
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: Column(
-        crossAxisAlignment: isOutgoing
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: isOutgoing
-                ? MainAxisAlignment.end
-                : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!isOutgoing) ...[
-                _buildAvatar(message.senderName),
-                const SizedBox(width: 8),
-              ],
-              Flexible(
-                child: GestureDetector(
-                  onTap: () => _showMessagePathInfo(message),
-                  onLongPress: () => _showMessageActions(message),
-                  child: Container(
-                    padding: gifId != null
-                        ? const EdgeInsets.all(4)
-                        : const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.65,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isOutgoing
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!isOutgoing) ...[
-                          Padding(
-                            padding: gifId != null
-                                ? const EdgeInsets.only(
-                                    left: 8,
-                                    top: 4,
-                                    bottom: 4,
-                                  )
-                                : EdgeInsets.zero,
-                            child: Text(
-                              message.senderName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
+    const maxSwipeOffset = 64.0;
+    const replySwipeThreshold = 48.0;
+    final swipeOffset = _getSwipeOffset(message.messageId);
+
+    final messageBody = Column(
+      crossAxisAlignment: isOutgoing
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: isOutgoing
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isOutgoing) ...[
+              _buildAvatar(message.senderName),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: GestureDetector(
+                onTap: () => _showMessagePathInfo(message),
+                onLongPress: () => _showMessageActions(message),
+                child: Container(
+                  padding: gifId != null
+                      ? const EdgeInsets.all(4)
+                      : const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.65,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isOutgoing
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!isOutgoing) ...[
+                        Padding(
+                          padding: gifId != null
+                              ? const EdgeInsets.only(
+                                  left: 8,
+                                  top: 4,
+                                  bottom: 4,
+                                )
+                              : EdgeInsets.zero,
+                          child: Text(
+                            message.senderName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          if (gifId == null) const SizedBox(height: 4),
-                        ],
-                        if (message.replyToMessageId != null) ...[
-                          _buildReplyPreview(message),
-                          const SizedBox(height: 8),
-                        ],
-                        if (poi != null)
-                          _buildPoiMessage(context, poi, isOutgoing)
-                        else if (gifId != null)
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: GifMessage(
-                              url:
-                                  'https://media.giphy.com/media/$gifId/giphy.gif',
-                              backgroundColor: Colors.transparent,
-                              fallbackTextColor: isOutgoing
-                                  ? Theme.of(context)
-                                        .colorScheme
-                                        .onPrimaryContainer
-                                        .withValues(alpha: 0.7)
-                                  : Theme.of(context).colorScheme.onSurface
-                                        .withValues(alpha: 0.6),
-                            ),
-                          )
-                        else
-                          Linkify(
-                            text: message.text,
-                            style: const TextStyle(fontSize: 14),
-                            linkStyle: const TextStyle(
-                              fontSize: 14,
-                              color: Colors.green,
-                              decoration: TextDecoration.underline,
-                            ),
-                            options: const LinkifyOptions(
-                              humanize: false,
-                              defaultToHttps: false,
-                            ),
-                            linkifiers: const [UrlLinkifier()],
-                            onOpen: (link) =>
-                                LinkHandler.handleLinkTap(context, link.url),
+                        ),
+                        if (gifId == null) const SizedBox(height: 4),
+                      ],
+                      if (message.replyToMessageId != null) ...[
+                        _buildReplyPreview(message),
+                        const SizedBox(height: 8),
+                      ],
+                      if (poi != null)
+                        _buildPoiMessage(context, poi, isOutgoing)
+                      else if (gifId != null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: GifMessage(
+                            url:
+                                'https://media.giphy.com/media/$gifId/giphy.gif',
+                            backgroundColor: Colors.transparent,
+                            fallbackTextColor: isOutgoing
+                                ? Theme.of(context)
+                                      .colorScheme
+                                      .onPrimaryContainer
+                                      .withValues(alpha: 0.7)
+                                : Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
                           ),
-                        if (displayPath.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Padding(
-                            padding: gifId != null
-                                ? const EdgeInsets.symmetric(horizontal: 8)
-                                : EdgeInsets.zero,
-                            child: Text(
-                              'via ${_formatPathPrefixes(displayPath)}',
+                        )
+                      else
+                        Linkify(
+                          text: message.text,
+                          style: const TextStyle(fontSize: 14),
+                          linkStyle: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.green,
+                            decoration: TextDecoration.underline,
+                          ),
+                          options: const LinkifyOptions(
+                            humanize: false,
+                            defaultToHttps: false,
+                          ),
+                          linkifiers: const [UrlLinkifier()],
+                          onOpen: (link) =>
+                              LinkHandler.handleLinkTap(context, link.url),
+                        ),
+                      if (displayPath.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: gifId != null
+                              ? const EdgeInsets.symmetric(horizontal: 8)
+                              : EdgeInsets.zero,
+                          child: Text(
+                            'via ${_formatPathPrefixes(displayPath)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: gifId != null
+                            ? const EdgeInsets.only(
+                                left: 8,
+                                right: 8,
+                                bottom: 4,
+                              )
+                            : EdgeInsets.zero,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _formatTime(message.timestamp),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.grey[600],
                               ),
                             ),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Padding(
-                          padding: gifId != null
-                              ? const EdgeInsets.only(
-                                  left: 8,
-                                  right: 8,
-                                  bottom: 4,
-                                )
-                              : EdgeInsets.zero,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                            if (message.repeatCount > 0) ...[
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.repeat,
+                                size: 12,
+                                color: Colors.grey[600],
+                              ),
+                              const SizedBox(width: 2),
                               Text(
-                                _formatTime(message.timestamp),
+                                '${message.repeatCount}',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.grey[600],
                                 ),
                               ),
-                              if (message.repeatCount > 0) ...[
-                                const SizedBox(width: 6),
-                                Icon(
-                                  Icons.repeat,
-                                  size: 12,
-                                  color: Colors.grey[600],
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '${message.repeatCount}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                              if (isOutgoing) ...[
-                                const SizedBox(width: 4),
-                                Icon(
-                                  message.status == ChannelMessageStatus.sent
-                                      ? Icons.check
-                                      : message.status ==
-                                            ChannelMessageStatus.pending
-                                      ? Icons.schedule
-                                      : Icons.error_outline,
-                                  size: 14,
-                                  color:
-                                      message.status ==
-                                          ChannelMessageStatus.failed
-                                      ? Colors.red
-                                      : Colors.grey[600],
-                                ),
-                              ],
                             ],
-                          ),
+                            if (isOutgoing) ...[
+                              const SizedBox(width: 4),
+                              Icon(
+                                message.status == ChannelMessageStatus.sent
+                                    ? Icons.check
+                                    : message.status ==
+                                          ChannelMessageStatus.pending
+                                    ? Icons.schedule
+                                    : Icons.error_outline,
+                                size: 14,
+                                color:
+                                    message.status ==
+                                        ChannelMessageStatus.failed
+                                    ? Colors.red
+                                    : Colors.grey[600],
+                              ),
+                            ],
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
-          if (message.reactions.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Padding(
-              padding: EdgeInsets.only(left: isOutgoing ? 0 : 48),
-              child: _buildReactionsDisplay(message),
             ),
           ],
+        ),
+        if (message.reactions.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: EdgeInsets.only(left: isOutgoing ? 0 : 48),
+            child: _buildReactionsDisplay(message),
+          ),
         ],
+      ],
+    );
+
+    return Listener(
+      onPointerDown: (details) {
+        _swipeStartPosition = details.position;
+        _swipeTrackingMessageId = message.messageId;
+        _swipeOffset = 0;
+      },
+      onPointerMove: (details) {
+        if (_swipeStartPosition == null ||
+            _swipeTrackingMessageId != message.messageId) {
+          return;
+        }
+        final dx = details.position.dx - _swipeStartPosition!.dx;
+        final dy = details.position.dy - _swipeStartPosition!.dy;
+
+        if (dx.abs() < 6) return;
+        if (dx.abs() <= dy.abs() * 1.5) return;
+
+        final nextRaw = dx.clamp(-maxSwipeOffset, maxSwipeOffset);
+        final nextDisplay = _applySwipeResistance(nextRaw, maxSwipeOffset);
+        if (nextDisplay != _swipeOffset) {
+          setState(() => _swipeOffset = nextDisplay);
+        }
+      },
+      onPointerUp: (details) {
+        if (_swipeTrackingMessageId == message.messageId &&
+            _swipeStartPosition != null) {
+          final dx = details.position.dx - _swipeStartPosition!.dx;
+          if (dx.abs() >= replySwipeThreshold) {
+            _setReplyingTo(message);
+            HapticFeedback.selectionClick();
+          }
+        }
+        setState(() => _swipeOffset = 0);
+        _swipeStartPosition = null;
+        _swipeTrackingMessageId = null;
+      },
+      onPointerCancel: (_) {
+        setState(() => _swipeOffset = 0);
+        _swipeStartPosition = null;
+        _swipeTrackingMessageId = null;
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: swipeOffset.abs() / maxSwipeOffset,
+                child: _buildReplySwipeHint(
+                  isStart: swipeOffset >= 0,
+                ),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              transform: Matrix4.translationValues(swipeOffset, 0, 0),
+              curve: Curves.easeOut,
+              child: messageBody,
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildReplySwipeHint({required bool isStart}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.reply, color: colorScheme.primary),
+        const SizedBox(width: 6),
+        Text(
+          context.l10n.chat_reply,
+          style: TextStyle(
+            color: colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+
+    return Container(
+      alignment: isStart ? Alignment.centerLeft : Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      color: colorScheme.primary.withValues(alpha: 0.08),
+      child: isStart
+          ? content
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  context.l10n.chat_reply,
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(Icons.reply, color: colorScheme.primary),
+              ],
+            ),
     );
   }
 
