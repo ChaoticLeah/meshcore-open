@@ -103,6 +103,52 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     return _swipeTrackingMessageId == messageId ? _swipeOffset : 0;
   }
 
+  void _handleSwipeStart(String messageId, Offset position) {
+    _swipeStartPosition = position;
+    _swipeTrackingMessageId = messageId;
+    _swipeOffset = 0;
+  }
+
+  void _handleSwipeUpdate(String messageId, Offset position, double maxOffset) {
+    if (_swipeStartPosition == null || _swipeTrackingMessageId != messageId) {
+      return;
+    }
+    final dx = position.dx - _swipeStartPosition!.dx;
+    final dy = position.dy - _swipeStartPosition!.dy;
+
+    // Require a minimum horizontal movement to start showing swipe feedback
+    if (dx.abs() < 6) return;
+    // If the vertical movement is more than ~1.5x the horizontal, consider it a scroll, not a swipe
+    if (dx.abs() <= dy.abs() * 1.5) return;
+
+    final clamped = dx.clamp(-maxOffset, maxOffset);
+    final adjusted = _applySwipeResistance(clamped, maxOffset);
+    if (adjusted != _swipeOffset) {
+      setState(() => _swipeOffset = adjusted);
+    }
+  }
+
+  void _handleSwipeEnd(
+    Offset position,
+    double threshold,
+    ChannelMessage message,
+  ) {
+    if (_swipeStartPosition != null) {
+      final dx = position.dx - _swipeStartPosition!.dx;
+      if (dx.abs() >= threshold) {
+        _setReplyingTo(message);
+        HapticFeedback.selectionClick();
+      }
+    }
+    _resetSwipe();
+  }
+
+  void _resetSwipe() {
+    setState(() => _swipeOffset = 0);
+    _swipeStartPosition = null;
+    _swipeTrackingMessageId = null;
+  }
+
   double _applySwipeResistance(double rawOffset, double maxOffset) {
     final abs = rawOffset.abs();
     if (abs <= 0) return 0;
@@ -480,46 +526,19 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     );
 
     return Listener(
-      onPointerDown: (details) {
-        _swipeStartPosition = details.position;
-        _swipeTrackingMessageId = message.messageId;
-        _swipeOffset = 0;
-      },
-      onPointerMove: (details) {
-        if (_swipeStartPosition == null ||
-            _swipeTrackingMessageId != message.messageId) {
-          return;
-        }
-        final dx = details.position.dx - _swipeStartPosition!.dx;
-        final dy = details.position.dy - _swipeStartPosition!.dy;
-
-        if (dx.abs() < 6) return;
-        if (dx.abs() <= dy.abs() * 1.5) return;
-
-        final nextRaw = dx.clamp(-maxSwipeOffset, maxSwipeOffset);
-        final nextDisplay = _applySwipeResistance(nextRaw, maxSwipeOffset);
-        if (nextDisplay != _swipeOffset) {
-          setState(() => _swipeOffset = nextDisplay);
-        }
-      },
-      onPointerUp: (details) {
-        if (_swipeTrackingMessageId == message.messageId &&
-            _swipeStartPosition != null) {
-          final dx = details.position.dx - _swipeStartPosition!.dx;
-          if (dx.abs() >= replySwipeThreshold) {
-            _setReplyingTo(message);
-            HapticFeedback.selectionClick();
-          }
-        }
-        setState(() => _swipeOffset = 0);
-        _swipeStartPosition = null;
-        _swipeTrackingMessageId = null;
-      },
-      onPointerCancel: (_) {
-        setState(() => _swipeOffset = 0);
-        _swipeStartPosition = null;
-        _swipeTrackingMessageId = null;
-      },
+      onPointerDown: (details) =>
+          _handleSwipeStart(message.messageId, details.position),
+      onPointerMove: (details) => _handleSwipeUpdate(
+        message.messageId,
+        details.position,
+        maxSwipeOffset,
+      ),
+      onPointerUp: (details) => _handleSwipeEnd(
+        details.position,
+        replySwipeThreshold,
+        message,
+      ),
+      onPointerCancel: (_) => _resetSwipe(),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Stack(
