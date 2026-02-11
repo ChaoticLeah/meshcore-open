@@ -25,90 +25,60 @@
             android-tools
             gradle
 
-            # iOS development (macOS only)
-          ] ++ (
-            if pkgs.stdenv.isDarwin then
-              with pkgs.darwin.apple_sdk.frameworks; [
-                Cocoa
-                Security
-                IOKit
-              ]
-            else
-              []
-          ) ++ [
-            # Common development tools
-            git
-            curl
-            wget
-            pkg-config
-
-            # Build tools
-            cmake
-            ninja
-            clang
-            llvm
-            # Linux desktop development
+            # For the shell hook to set up the environment for Flutter development
             gtk3
             glib
-            libdatrie
             sysprof
-            xorg.libX11
-            xorg.libXext
-            xorg.libXrender
-            xorg.libXinerama
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
-            xorg.libXdamage
-            # Optional: testing
-            lcov
+            libclang
+            cmake
+            ninja
+            pkg-config
+            libdatrie
+
+            # Additional tools for installing Android SDK if not present
+            curl
+            unzip
           ];
 
           shellHook = ''
-            echo "🔵 MeshCore Flutter Development Environment"
+            echo "MeshCore Flutter Development Environment"
             export PKG_CONFIG_PATH="${pkgs.gtk3}/lib/pkgconfig:${pkgs.glib}/lib/pkgconfig:${pkgs.sysprof}/lib/pkgconfig:$PKG_CONFIG_PATH"
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [pkgs.gtk3 pkgs.glib pkgs.sysprof pkgs.libdatrie]}:$LD_LIBRARY_PATH"
             export CMAKE_INSTALL_PREFIX="$PWD/build/bundle"
-            mkdir -p "$PWD/build/bundle"
             
             # Setup Android SDK in home directory (standard location)
             export ANDROID_HOME="$HOME/Android/Sdk"
             export ANDROID_SDK_ROOT="$ANDROID_HOME"
             export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools/bin:$PATH"
             
-            # Use gradle wrapper
-            export GRADLE_USER_HOME="$PWD/.gradle"
-            
-            echo "🔵 Android SDK: $ANDROID_HOME"
-            echo "🔵 Gradle Home: $GRADLE_USER_HOME"
+            echo "Android SDK: $ANDROID_HOME"
             echo ""
             
             # Check if Android SDK exists and offer to download if not
             if [ ! -d "$ANDROID_HOME" ]; then
-              echo "⚠️  Android SDK not found at $ANDROID_HOME"
+              echo "WARNING: Android SDK not found at $ANDROID_HOME"
               echo ""
               echo "To download and set up the Android SDK, run this command:"
               echo ""
               cat << 'EOF'
 mkdir -p ~/Android/Sdk && cd ~/Android/Sdk && \
-curl -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip && \
+curl -o cmdline-tools.zip ${if pkgs.stdenv.isDarwin then "https://dl.google.com/android/repository/commandlinetools-mac-10406996_latest.zip" else "https://dl.google.com/android/repository/commandlinetools-linux-10406996_latest.zip"} && \
 unzip -q cmdline-tools.zip && \
 mkdir -p cmdline-tools/latest && \
-mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
+mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || echo "Warning: failed to move Android cmdline-tools into 'latest' directory; please check your SDK layout." >&2 && \
 rm cmdline-tools.zip && \
 cd cmdline-tools/latest/bin && \
-yes | ./sdkmanager --sdk_root=~/Android/Sdk 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0' && \
-echo "✓ Android SDK setup complete!"
+yes | ./sdkmanager --sdk_root=~/Android/Sdk 'platform-tools' && \
+echo "Android SDK setup complete!"
 EOF
               echo ""
               echo "Then run 'flutter doctor' again to verify."
               echo ""
             else
-              echo "✓ Android SDK found at $ANDROID_HOME"
+              echo "Android SDK found at $ANDROID_HOME"
             fi
             
-            echo "Running flutter doctor..."
-            flutter doctor
+            echo "To check that everything is set up correctly, run 'flutter doctor' and ensure there are no issues."
           '';
         };
       }

@@ -5,7 +5,6 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:pointycastle/export.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models/channel.dart';
 import '../models/channel_message.dart';
@@ -658,7 +657,8 @@ class MeshCoreConnector extends ChangeNotifier {
       _scanResults.clear();
       for (var result in results) {
         if (result.device.platformName.startsWith("MeshCore-") ||
-            result.advertisementData.advName.startsWith("MeshCore-")) {
+            result.advertisementData.advName.startsWith("MeshCore-") ||
+            result.advertisementData.advName.startsWith("Whisper-")) {
           _scanResults.add(result);
         }
       }
@@ -775,9 +775,6 @@ class MeshCoreConnector extends ChangeNotifier {
 
       _setState(MeshCoreConnectionState.connected);
 
-      // Enable wake lock to prevent BLE disconnection when screen turns off
-      await WakelockPlus.enable();
-
       await _requestDeviceInfo();
       _startBatteryPolling();
       final gotSelfInfo = await _waitForSelfInfo(
@@ -885,9 +882,6 @@ class MeshCoreConnector extends ChangeNotifier {
     }
     _setState(MeshCoreConnectionState.disconnecting);
     _stopBatteryPolling();
-
-    // Disable wake lock when disconnecting
-    await WakelockPlus.disable();
 
     await _notifySubscription?.cancel();
     _notifySubscription = null;
@@ -3214,8 +3208,6 @@ class MeshCoreConnector extends ChangeNotifier {
   }
 
   void _handleDisconnection() {
-    // Disable wake lock when connection is lost
-    WakelockPlus.disable();
     _stopBatteryPolling();
 
     for (final entry in _pendingRepeaterAcks.values) {
