@@ -533,11 +533,8 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
         details.position,
         maxSwipeOffset,
       ),
-      onPointerUp: (details) => _handleSwipeEnd(
-        details.position,
-        replySwipeThreshold,
-        message,
-      ),
+      onPointerUp: (details) =>
+          _handleSwipeEnd(details.position, replySwipeThreshold, message),
       onPointerCancel: (_) => _resetSwipe(),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
