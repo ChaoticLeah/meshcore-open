@@ -82,5 +82,3 @@ keystore.properties
 # IDE
 .vscode/launch.json
 .vscode/settings.json
-
-.gradle/
