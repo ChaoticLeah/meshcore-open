@@ -320,19 +320,14 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
                 child: Container(
                   padding: gifId != null
                       ? const EdgeInsets.all(4)
-                      : const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
+                      : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.65,
                   ),
                   decoration: BoxDecoration(
                     color: isOutgoing
                         ? Theme.of(context).colorScheme.primaryContainer
-                        : Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
+                        : Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -533,9 +528,7 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
             Positioned.fill(
               child: Opacity(
                 opacity: swipeOffset.abs() / maxSwipeOffset,
-                child: _buildReplySwipeHint(
-                  isStart: swipeOffset >= 0,
-                ),
+                child: _buildReplySwipeHint(isStart: swipeOffset >= 0),
               ),
             ),
             AnimatedContainer(
