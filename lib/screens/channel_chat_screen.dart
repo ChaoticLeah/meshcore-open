@@ -525,17 +525,19 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       ],
     );
 
-    return Listener(
-      onPointerDown: (details) =>
-          _handleSwipeStart(message.messageId, details.position),
-      onPointerMove: (details) => _handleSwipeUpdate(
+    return GestureDetector(
+      onHorizontalDragStart: (details) => _handleSwipeStart(
         message.messageId,
-        details.position,
+        details.globalPosition,
+      ),
+      onHorizontalDragUpdate: (details) => _handleSwipeUpdate(
+        message.messageId,
+        details.globalPosition,
         maxSwipeOffset,
       ),
-      onPointerUp: (details) =>
-          _handleSwipeEnd(details.position, replySwipeThreshold, message),
-      onPointerCancel: (_) => _resetSwipe(),
+      onHorizontalDragEnd: (details) =>
+          _handleSwipeEnd(Offset.zero, replySwipeThreshold, message),
+      onHorizontalDragCancel: _resetSwipe,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Stack(
