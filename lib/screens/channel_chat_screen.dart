@@ -121,7 +121,7 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     // If the vertical movement is more than ~1.5x the horizontal, consider it a scroll, not a swipe
     if (dx.abs() <= dy.abs() * 1.5) return;
 
-    final clamped = dx.clamp(-maxOffset, maxOffset);
+    final double clamped = dx.clamp(-maxOffset, maxOffset).toDouble();
     final adjusted = _applySwipeResistance(clamped, maxOffset);
     if (adjusted != _swipeOffset) {
       setState(() => _swipeOffset = adjusted);
