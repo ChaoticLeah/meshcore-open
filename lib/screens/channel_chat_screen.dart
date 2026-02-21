@@ -534,7 +534,7 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
         maxSwipeOffset,
       ),
       onHorizontalDragEnd: (details) =>
-          _handleSwipeEnd(Offset.zero, replySwipeThreshold, message),
+          _handleSwipeEnd(details.globalPosition, replySwipeThreshold, message),
       onHorizontalDragCancel: _resetSwipe,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
