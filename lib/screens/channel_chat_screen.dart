@@ -526,10 +526,8 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     );
 
     return GestureDetector(
-      onHorizontalDragStart: (details) => _handleSwipeStart(
-        message.messageId,
-        details.globalPosition,
-      ),
+      onHorizontalDragStart: (details) =>
+          _handleSwipeStart(message.messageId, details.globalPosition),
       onHorizontalDragUpdate: (details) => _handleSwipeUpdate(
         message.messageId,
         details.globalPosition,
