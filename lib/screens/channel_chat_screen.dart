@@ -455,14 +455,21 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       ],
     );
 
-    return _SwipeReplyBubble(
-      maxSwipeOffset: maxSwipeOffset,
-      replySwipeThreshold: replySwipeThreshold,
-      onReplyTriggered: () => _setReplyingTo(message),
-      hintBuilder: ({required isStart}) =>
-          _buildReplySwipeHint(isStart: isStart),
-      child: messageBody,
-    );
+    if (!isOutgoing) {
+      return _SwipeReplyBubble(
+        maxSwipeOffset: maxSwipeOffset,
+        replySwipeThreshold: replySwipeThreshold,
+        onReplyTriggered: () => _setReplyingTo(message),
+        hintBuilder: ({required isStart}) =>
+            _buildReplySwipeHint(isStart: isStart),
+        child: messageBody,
+      );
+    } else {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: messageBody,
+      );
+    }
   }
 
   Widget _buildReplySwipeHint({required bool isStart}) {
