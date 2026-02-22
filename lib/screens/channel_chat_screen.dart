@@ -107,9 +107,16 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
   }
 
   void _handleSwipeStart(String messageId, Offset position) {
+    final bool hadNonZeroOffset = _swipeOffset != 0;
     _swipeStartPosition = position;
     _swipeTrackingMessageId = messageId;
-    _swipeOffset = 0;
+    if (hadNonZeroOffset) {
+      setState(() {
+        _swipeOffset = 0;
+      });
+    } else {
+      _swipeOffset = 0;
+    }
   }
 
   void _handleSwipePointerDown(String messageId, PointerDownEvent event) {
