@@ -219,7 +219,10 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     final curved = t < 0.5
         ? 16 * math.pow(t, 5)
         : 1 - math.pow(-2 * t + 2, 5) / 2;
-    return rawOffset.sign * maxOffset * curved;
+    const deadZoneEnd = 0.0144;
+    return rawOffset.sign *
+        maxOffset *
+        (deadZoneEnd + curved * (1 - deadZoneEnd));
   }
 
   Future<void> _scrollToMessage(String messageId) async {
