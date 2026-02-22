@@ -273,7 +273,7 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
               : Uint8List(0));
 
     const maxSwipeOffset = 64.0;
-    const replySwipeThreshold = 48.0;
+    const replySwipeThreshold = 64.0;
     final messageBody = Column(
       crossAxisAlignment: isOutgoing
           ? CrossAxisAlignment.end
@@ -1100,7 +1100,7 @@ class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
 
     const axisLockThreshold = 12.0;
     if (!_swipeLockedToHorizontal) {
-      if (dx.abs() < axisLockThreshold) {
+      if (-dx < axisLockThreshold) {
         return;
       }
       _swipeLockedToHorizontal = true;
@@ -1113,16 +1113,15 @@ class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
     if (_swipeStartPosition == null) return;
 
     final dx = position.dx - _swipeStartPosition!.dx;
+    if (dx >= 0) return;
 
-    if (dx.abs() < 6) return;
+    if (-dx < 6) return;
 
-    if (dx.abs() > _maxSwipeDistance) {
-      _maxSwipeDistance = dx.abs();
+    if (-dx > _maxSwipeDistance) {
+      _maxSwipeDistance = -dx;
     }
 
-    final double clamped = dx
-        .clamp(-widget.maxSwipeOffset, widget.maxSwipeOffset)
-        .toDouble();
+    final double clamped = dx.clamp(-widget.maxSwipeOffset, 0.0).toDouble();
     final adjusted = _applySwipeResistance(clamped, widget.maxSwipeOffset);
     if (adjusted != _swipeOffset) {
       setState(() => _swipeOffset = adjusted);
@@ -1132,7 +1131,10 @@ class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
   void _handleSwipePointerUp(Offset position) {
     if (_swipeLockedToHorizontal && _swipeStartPosition != null) {
       final dx = position.dx - _swipeStartPosition!.dx;
-      final peak = math.max(_maxSwipeDistance, dx.abs());
+      final peak = math.max(
+        _maxSwipeDistance,
+        (-dx).clamp(0.0, double.infinity),
+      );
       if (peak >= widget.replySwipeThreshold) {
         widget.onReplyTriggered();
         HapticFeedback.selectionClick();
@@ -1184,7 +1186,7 @@ class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
             Positioned.fill(
               child: Opacity(
                 opacity: _swipeOffset.abs() / widget.maxSwipeOffset,
-                child: widget.hintBuilder(isStart: _swipeOffset >= 0),
+                child: widget.hintBuilder(isStart: false),
               ),
             ),
             AnimatedContainer(
