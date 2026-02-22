@@ -40,12 +40,6 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
   final FocusNode _textFieldFocusNode = FocusNode();
   ChannelMessage? _replyingToMessage;
   final Map<String, GlobalKey> _messageKeys = {};
-  Offset? _swipeStartPosition;
-  String? _swipeTrackingMessageId;
-  double _swipeOffset = 0;
-  int? _swipePointerId;
-  bool _swipeLockedToHorizontal = false;
-  bool _swipeBlockedByVertical = false;
   bool _isLoadingOlder = false;
 
   MeshCoreConnector? _connector;
@@ -100,136 +94,6 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     setState(() {
       _replyingToMessage = null;
     });
-  }
-
-  double _getSwipeOffset(String messageId) {
-    return _swipeTrackingMessageId == messageId ? _swipeOffset : 0;
-  }
-
-  void _handleSwipeStart(String messageId, Offset position) {
-    final bool hadNonZeroOffset = _swipeOffset != 0;
-    _swipeStartPosition = position;
-    _swipeTrackingMessageId = messageId;
-    if (hadNonZeroOffset) {
-      setState(() {
-        _swipeOffset = 0;
-      });
-    } else {
-      _swipeOffset = 0;
-    }
-  }
-
-  void _handleSwipePointerDown(String messageId, PointerDownEvent event) {
-    _swipePointerId = event.pointer;
-    _swipeLockedToHorizontal = false;
-    _swipeBlockedByVertical = false;
-    _handleSwipeStart(messageId, event.position);
-  }
-
-  void _handleSwipePointerMove(
-    String messageId,
-    PointerMoveEvent event,
-    double maxOffset,
-  ) {
-    if (_swipePointerId != event.pointer ||
-        _swipeStartPosition == null ||
-        _swipeTrackingMessageId != messageId ||
-        _swipeBlockedByVertical) {
-      return;
-    }
-
-    final dx = event.position.dx - _swipeStartPosition!.dx;
-    final dy = event.position.dy - _swipeStartPosition!.dy;
-
-    const axisLockThreshold = 14.0;
-    if (!_swipeLockedToHorizontal) {
-      if (dx.abs() < axisLockThreshold && dy.abs() < axisLockThreshold) {
-        return;
-      }
-      if (dy.abs() > dx.abs() * 1.2) {
-        _swipeBlockedByVertical = true;
-        _resetSwipe();
-        return;
-      }
-      _swipeLockedToHorizontal = true;
-    }
-
-    _handleSwipeUpdate(messageId, event.position, maxOffset);
-  }
-
-  void _handleSwipePointerUp(
-    Offset position,
-    double threshold,
-    ChannelMessage message,
-  ) {
-    if (_swipeLockedToHorizontal) {
-      _handleSwipeEnd(position, threshold, message);
-      return;
-    }
-    _resetSwipe();
-  }
-
-  void _handleSwipeUpdate(String messageId, Offset position, double maxOffset) {
-    if (_swipeStartPosition == null || _swipeTrackingMessageId != messageId) {
-      return;
-    }
-    final dx = position.dx - _swipeStartPosition!.dx;
-    final dy = position.dy - _swipeStartPosition!.dy;
-
-    // Require a minimum horizontal movement to start showing swipe feedback
-    if (dx.abs() < 6) return;
-    // If the vertical movement is more than ~1.5x the horizontal, consider it a scroll, not a swipe
-    if (dx.abs() <= dy.abs() * 1.5) return;
-
-    final double clamped = dx.clamp(-maxOffset, maxOffset).toDouble();
-    final adjusted = _applySwipeResistance(clamped, maxOffset);
-    if (adjusted != _swipeOffset) {
-      setState(() => _swipeOffset = adjusted);
-    }
-  }
-
-  void _handleSwipeEnd(
-    Offset position,
-    double threshold,
-    ChannelMessage message,
-  ) {
-    if (_swipeStartPosition != null) {
-      final dx = position.dx - _swipeStartPosition!.dx;
-      if (dx.abs() >= threshold) {
-        _setReplyingTo(message);
-        HapticFeedback.selectionClick();
-      }
-    }
-    _resetSwipe();
-  }
-
-  void _resetSwipe() {
-    if (_swipeOffset != 0) {
-      setState(() => _swipeOffset = 0);
-    }
-    _swipeStartPosition = null;
-    _swipeTrackingMessageId = null;
-    _swipePointerId = null;
-    _swipeLockedToHorizontal = false;
-    _swipeBlockedByVertical = false;
-  }
-
-  double _applySwipeResistance(double rawOffset, double maxOffset) {
-    final abs = rawOffset.abs();
-    if (abs <= 0) return 0;
-    final norm = (abs / maxOffset).clamp(0.0, 1.0);
-    const deadZone = 0.18;
-    if (norm <= deadZone) {
-      return rawOffset.sign * maxOffset * (norm * 0.08);
-    }
-    final t = ((norm - deadZone) / (1 - deadZone)).clamp(0.0, 1.0);
-    final curved = t < 0.5
-        ? 16 * math.pow(t, 5)
-        : 1 - math.pow(-2 * t + 2, 5) / 2;
-    const deadZoneEnd = 0.0144;
-    return rawOffset.sign *
-        maxOffset *
-        (deadZoneEnd + curved * (1 - deadZoneEnd));
   }
 
   Future<void> _scrollToMessage(String messageId) async {
@@ -410,8 +274,6 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
 
     const maxSwipeOffset = 64.0;
     const replySwipeThreshold = 48.0;
-    final swipeOffset = _getSwipeOffset(message.messageId);
-
     final messageBody = Column(
       crossAxisAlignment: isOutgoing
           ? CrossAxisAlignment.end
@@ -593,34 +455,13 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       ],
     );
 
-    return Listener(
-      onPointerDown: (event) =>
-          _handleSwipePointerDown(message.messageId, event),
-      onPointerMove: (event) =>
-          _handleSwipePointerMove(message.messageId, event, maxSwipeOffset),
-      onPointerUp: (event) =>
-          _handleSwipePointerUp(event.position, replySwipeThreshold, message),
-      onPointerCancel: (_) => _resetSwipe(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Positioned.fill(
-              child: Opacity(
-                opacity: swipeOffset.abs() / maxSwipeOffset,
-                child: _buildReplySwipeHint(isStart: swipeOffset >= 0),
-              ),
-            ),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              transform: Matrix4.translationValues(swipeOffset, 0, 0),
-              curve: Curves.easeOut,
-              child: messageBody,
-            ),
-          ],
-        ),
-      ),
+    return _SwipeReplyBubble(
+      maxSwipeOffset: maxSwipeOffset,
+      replySwipeThreshold: replySwipeThreshold,
+      onReplyTriggered: () => _setReplyingTo(message),
+      hintBuilder: ({required isStart}) =>
+          _buildReplySwipeHint(isStart: isStart),
+      child: messageBody,
     );
   }
 
@@ -1207,6 +1048,155 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     return pathBytes
         .map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
         .join(',');
+  }
+}
+
+class _SwipeReplyBubble extends StatefulWidget {
+  final double maxSwipeOffset;
+  final double replySwipeThreshold;
+  final VoidCallback onReplyTriggered;
+  final Widget Function({required bool isStart}) hintBuilder;
+  final Widget child;
+
+  const _SwipeReplyBubble({
+    required this.maxSwipeOffset,
+    required this.replySwipeThreshold,
+    required this.onReplyTriggered,
+    required this.hintBuilder,
+    required this.child,
+  });
+
+  @override
+  State<_SwipeReplyBubble> createState() => _SwipeReplyBubbleState();
+}
+
+class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
+  Offset? _swipeStartPosition;
+  double _swipeOffset = 0;
+  double _maxSwipeDistance = 0;
+  int? _swipePointerId;
+  bool _swipeLockedToHorizontal = false;
+
+  void _handleSwipeStart(Offset position) {
+    _swipeStartPosition = position;
+    _maxSwipeDistance = 0;
+    if (_swipeOffset != 0) {
+      setState(() => _swipeOffset = 0);
+    }
+  }
+
+  void _handleSwipePointerDown(PointerDownEvent event) {
+    _swipePointerId = event.pointer;
+    _swipeLockedToHorizontal = false;
+    _handleSwipeStart(event.position);
+  }
+
+  void _handleSwipePointerMove(PointerMoveEvent event) {
+    if (_swipePointerId != event.pointer || _swipeStartPosition == null) {
+      return;
+    }
+
+    final dx = event.position.dx - _swipeStartPosition!.dx;
+
+    const axisLockThreshold = 12.0;
+    if (!_swipeLockedToHorizontal) {
+      if (dx.abs() < axisLockThreshold) {
+        return;
+      }
+      _swipeLockedToHorizontal = true;
+    }
+
+    _handleSwipeUpdate(event.position);
+  }
+
+  void _handleSwipeUpdate(Offset position) {
+    if (_swipeStartPosition == null) return;
+
+    final dx = position.dx - _swipeStartPosition!.dx;
+
+    if (dx.abs() < 6) return;
+
+    if (dx.abs() > _maxSwipeDistance) {
+      _maxSwipeDistance = dx.abs();
+    }
+
+    final double clamped = dx
+        .clamp(-widget.maxSwipeOffset, widget.maxSwipeOffset)
+        .toDouble();
+    final adjusted = _applySwipeResistance(clamped, widget.maxSwipeOffset);
+    if (adjusted != _swipeOffset) {
+      setState(() => _swipeOffset = adjusted);
+    }
+  }
+
+  void _handleSwipePointerUp(Offset position) {
+    if (_swipeLockedToHorizontal && _swipeStartPosition != null) {
+      final dx = position.dx - _swipeStartPosition!.dx;
+      final peak = math.max(_maxSwipeDistance, dx.abs());
+      if (peak >= widget.replySwipeThreshold) {
+        widget.onReplyTriggered();
+        HapticFeedback.selectionClick();
+      }
+    }
+    _resetSwipe();
+  }
+
+  void _resetSwipe() {
+    if (_swipeOffset != 0) {
+      setState(() => _swipeOffset = 0);
+    }
+    _swipeStartPosition = null;
+    _maxSwipeDistance = 0;
+    _swipePointerId = null;
+    _swipeLockedToHorizontal = false;
+  }
+
+  double _applySwipeResistance(double rawOffset, double maxOffset) {
+    final abs = rawOffset.abs();
+    if (abs <= 0) return 0;
+    final norm = (abs / maxOffset).clamp(0.0, 1.0);
+    const deadZone = 0.18;
+    if (norm <= deadZone) {
+      return rawOffset.sign * maxOffset * (norm * 0.08);
+    }
+    final t = ((norm - deadZone) / (1 - deadZone)).clamp(0.0, 1.0);
+    final curved = t < 0.5
+        ? 16 * math.pow(t, 5)
+        : 1 - math.pow(-2 * t + 2, 5) / 2;
+    const deadZoneEnd = 0.0144;
+    return rawOffset.sign *
+        maxOffset *
+        (deadZoneEnd + curved * (1 - deadZoneEnd));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      onPointerDown: _handleSwipePointerDown,
+      onPointerMove: _handleSwipePointerMove,
+      onPointerUp: (event) => _handleSwipePointerUp(event.position),
+      onPointerCancel: (_) => _resetSwipe(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: Opacity(
+                opacity: _swipeOffset.abs() / widget.maxSwipeOffset,
+                child: widget.hintBuilder(isStart: _swipeOffset >= 0),
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              transform: Matrix4.translationValues(_swipeOffset, 0, 0),
+              curve: Curves.easeOut,
+              child: widget.child,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
