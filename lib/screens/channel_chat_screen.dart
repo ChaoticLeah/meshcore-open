@@ -43,6 +43,9 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
   Offset? _swipeStartPosition;
   String? _swipeTrackingMessageId;
   double _swipeOffset = 0;
+  int? _swipePointerId;
+  bool _swipeLockedToHorizontal = false;
+  bool _swipeBlockedByVertical = false;
   bool _isLoadingOlder = false;
 
   MeshCoreConnector? _connector;
@@ -109,6 +112,56 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     _swipeOffset = 0;
   }
 
+  void _handleSwipePointerDown(String messageId, PointerDownEvent event) {
+    _swipePointerId = event.pointer;
+    _swipeLockedToHorizontal = false;
+    _swipeBlockedByVertical = false;
+    _handleSwipeStart(messageId, event.position);
+  }
+
+  void _handleSwipePointerMove(
+    String messageId,
+    PointerMoveEvent event,
+    double maxOffset,
+  ) {
+    if (_swipePointerId != event.pointer ||
+        _swipeStartPosition == null ||
+        _swipeTrackingMessageId != messageId ||
+        _swipeBlockedByVertical) {
+      return;
+    }
+
+    final dx = event.position.dx - _swipeStartPosition!.dx;
+    final dy = event.position.dy - _swipeStartPosition!.dy;
+
+    const axisLockThreshold = 14.0;
+    if (!_swipeLockedToHorizontal) {
+      if (dx.abs() < axisLockThreshold && dy.abs() < axisLockThreshold) {
+        return;
+      }
+      if (dy.abs() > dx.abs() * 1.2) {
+        _swipeBlockedByVertical = true;
+        _resetSwipe();
+        return;
+      }
+      _swipeLockedToHorizontal = true;
+    }
+
+    _handleSwipeUpdate(messageId, event.position, maxOffset);
+  }
+
+  void _handleSwipePointerUp(
+    Offset position,
+    double threshold,
+    ChannelMessage message,
+  ) {
+    if (_swipeLockedToHorizontal) {
+      _handleSwipeEnd(position, threshold, message);
+      return;
+    }
+    _resetSwipe();
+  }
+
   void _handleSwipeUpdate(String messageId, Offset position, double maxOffset) {
     if (_swipeStartPosition == null || _swipeTrackingMessageId != messageId) {
       return;
@@ -144,9 +197,14 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
   }
 
   void _resetSwipe() {
-    setState(() => _swipeOffset = 0);
+    if (_swipeOffset != 0) {
+      setState(() => _swipeOffset = 0);
+    }
     _swipeStartPosition = null;
     _swipeTrackingMessageId = null;
+    _swipePointerId = null;
+    _swipeLockedToHorizontal = false;
+    _swipeBlockedByVertical = false;
   }
 
   double _applySwipeResistance(double rawOffset, double maxOffset) {
@@ -525,17 +583,14 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       ],
     );
 
-    return GestureDetector(
-      onHorizontalDragStart: (details) =>
-          _handleSwipeStart(message.messageId, details.globalPosition),
-      onHorizontalDragUpdate: (details) => _handleSwipeUpdate(
-        message.messageId,
-        details.globalPosition,
-        maxSwipeOffset,
-      ),
-      onHorizontalDragEnd: (details) =>
-          _handleSwipeEnd(details.globalPosition, replySwipeThreshold, message),
-      onHorizontalDragCancel: _resetSwipe,
+    return Listener(
+      onPointerDown: (event) =>
+          _handleSwipePointerDown(message.messageId, event),
+      onPointerMove: (event) =>
+          _handleSwipePointerMove(message.messageId, event, maxSwipeOffset),
+      onPointerUp: (event) =>
+          _handleSwipePointerUp(event.position, replySwipeThreshold, message),
+      onPointerCancel: (_) => _resetSwipe(),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         child: Stack(
@@ -1039,7 +1094,8 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ChannelMessagePathScreen(message: message),
+        builder: (context) =>
+            ChannelMessagePathScreen(message: message, channelMessage: true),
       ),
     );
   }
